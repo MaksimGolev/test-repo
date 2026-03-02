@@ -1,0 +1,73 @@
+name: Security Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      scanner:
+        description: 'Сканер для запуска (semgrep, bandit, nodejsscan, gitleaks, gosec, hadolint, trivy, all)'
+        required: true
+        default: 'all'
+      repo_url:
+        description: 'Репозиторий для сканирования (self для текущего, или полный URL внешнего repo)'
+        required: true
+        default: 'self'
+      branch:
+        description: 'Ветка внешнего repo (если repo_url не self)'
+        required: false
+        default: 'main'
+      mode:
+        description: 'Режим сканирования (full или incremental)'
+        required: false
+        default: 'full'
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Checkout current repo (for self-scan or tools)
+        uses: actions/checkout@v4
+
+      - name: Clone external repo if needed
+        if: inputs.repo_url != 'self'
+        run: |
+          git clone --branch ${{ inputs.branch }} --depth 1 ${{ inputs.repo_url }} external-repo
+          echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Set scan directory
+        run: |
+          if [ "${{ inputs.repo_url }}" = "self" ]; then
+            echo "SCAN_CODE_DIR=." >> $GITHUB_ENV
+          else
+            echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
+          fi
+
+      - name: Build Docker image
+        run: docker build -t security-scanner .
+
+      - name: Run scanner
+        run: |
+          docker run --rm \
+            -v "${PWD}/${{ env.SCAN_CODE_DIR }}:/scan-target:ro" \
+            -v "${PWD}/reports:/scanner/reports" \
+            -e SCAN_DIR=/scan-target \
+            -e TOOL=${{ inputs.scanner }} \
+            -e SCAN_MODE=${{ inputs.mode }} \
+            security-scanner
+
+      - name: Upload reports as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ inputs.scanner }}
+          path: reports/
+          retention-days: 7
+
+      - name: Summary
+        run: |
+          echo "Scan completed for scanner: ${{ inputs.scanner }}"
+          echo "Repo: ${{ inputs.repo_url }}"
+          echo "Reports uploaded as artifact: security-reports-${{ inputs.scanner }}"
