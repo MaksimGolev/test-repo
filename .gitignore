@@ -1,0 +1,13 @@
+reports/
+*.sarif
+*.json
+*.html
+/templates
+test-repo/
+/utils
+.dockerignore
+defectdojo_integrations
+github_actions.yaml
+gitlab_CI.yaml
+/defectdojo
+.env
