@@ -46,6 +46,12 @@ jobs:
             echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
           fi
 
+      - name: Prepare reports directory with correct permissions
+        run: |
+          mkdir -p reports
+          sudo chown -R 10001:10001 reports
+          sudo chmod -R 777 reports 
+
       - name: Build Docker image
         run: docker build -t security-scanner .
 
