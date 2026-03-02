@@ -23,6 +23,11 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    env:
+      SCANNER: ${{ inputs.scanner }}
+      REPO_URL: ${{ inputs.repo_url }}
+      BRANCH: ${{ inputs.branch }}
+      SCAN_MODE: ${{ inputs.mode }}
     permissions:
       contents: read
       actions: write
@@ -32,15 +37,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Clone external repo if needed
-        if: inputs.repo_url != 'self'
         run: |
-          git clone --branch ${{ inputs.branch }} --depth 1 ${{ inputs.repo_url }} external-repo
-          echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
+          if [ "$REPO_URL" != "self" ]; then
+            git clone --branch "$BRANCH" --depth 1 "$REPO_URL" external-repo
+            echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
+          fi
         shell: bash
 
       - name: Set scan directory
         run: |
-          if [ "${{ inputs.repo_url }}" = "self" ]; then
+          if [ "$REPO_URL" = "self" ]; then
             echo "SCAN_CODE_DIR=." >> $GITHUB_ENV
           else
             echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
@@ -58,11 +64,11 @@ jobs:
       - name: Run scanner
         run: |
           docker run --rm \
-            -v "${PWD}/${{ env.SCAN_CODE_DIR }}:/scan-target:ro" \
+            -v "${PWD}/$SCAN_CODE_DIR:/scan-target:ro" \
             -v "${PWD}/reports:/scanner/reports" \
             -e SCAN_DIR=/scan-target \
-            -e TOOL=${{ inputs.scanner }} \
-            -e SCAN_MODE=${{ inputs.mode }} \
+            -e TOOL="$SCANNER" \
+            -e SCAN_MODE="$SCAN_MODE" \
             security-scanner
 
       - name: Upload reports as artifact
@@ -75,6 +81,6 @@ jobs:
 
       - name: Summary
         run: |
-          echo "Scan completed for scanner: ${{ inputs.scanner }}"
-          echo "Repo: ${{ inputs.repo_url }}"
-          echo "Reports uploaded as artifact: security-reports-${{ inputs.scanner }}"
+          echo "Scan completed for scanner: $SCANNER"
+          echo "Repo: $REPO_URL"
+          echo "Reports uploaded as artifact: security-reports-$SCANNER"
