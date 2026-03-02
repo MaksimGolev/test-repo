@@ -3,6 +3,8 @@
 # =============================================================================
 FROM alpine:3.20 AS builder
 
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+
 RUN apk add --no-cache \
     bash \
     curl \
