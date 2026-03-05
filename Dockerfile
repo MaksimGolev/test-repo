@@ -29,7 +29,7 @@ RUN python3 -m venv /opt/venv && \
     rm -rf /root/.cache/pip
 
 WORKDIR /tools
-ARG TRIVY_VERSION=0.69.2
+ARG TRIVY_VERSION=0.69.3
 ARG GITLEAKS_VERSION=8.30.0
 ARG GOSEC_VERSION=2.24.7
 ARG HADOLINT_VERSION=2.14.0
