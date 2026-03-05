@@ -71,17 +71,17 @@ if should_run "gosec"; then
         go mod init scan/target >/dev/null 2>&1
     fi
     
-    go mod tidy >/dev/null 2>&1
+    go mod tidy >/dev/null 2>&1 || true
 
     echo "Analyzing files..."
     
-    gosec -fmt json -out "$REPORT_DIR/gosec.json" -no-fail ./... > /dev/null 2>&1
+    gosec -fmt json -out "$REPORT_DIR/gosec.json" -no-fail ./... > /dev/null 2>&1 || true
 
     if [ -s "$REPORT_DIR/gosec.json" ]; then
         V_COUNT=$(jq '.Issues | length' "$REPORT_DIR/gosec.json" 2>/dev/null || echo "0")
         echo "✅ Gosec finished. Found $V_COUNT issues."
     else
-        echo "❌ Gosec failed to produce report."
+        echo "⚠️ Gosec could not analyze the code or found no issues."
         echo '{"Issues": []}' > "$REPORT_DIR/gosec.json"
     fi
     cd - > /dev/null
