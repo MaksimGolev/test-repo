@@ -88,6 +88,17 @@ def parse_json(file_path, scanner_name):
                     'file': result.get('path', 'N/A'),
                     'line': str(result.get('start', {}).get('line', ''))
                 })
+
+        if scanner_name == "gosec":
+            for issue in data.get('Issues', []):
+                findings.append({
+                    'title': f"{issue.get('rule_id')}: {issue.get('details')[:70]}",
+                    'description': issue.get('details'),
+                    'severity': issue.get('severity', 'medium').lower(),
+                    'file': issue.get('file', 'N/A'),
+                    'line': str(issue.get('line', ''))
+                })
+            return findings
         
         if scanner_name == "trivy":
             for result in data.get('Results', []):
@@ -144,7 +155,7 @@ SCANNERS_CONFIG = [
     {"id": "bandit", "name": "Bandit", "file": "bandit.json", "parser": lambda f: parse_json(f, "bandit")},
     {"id": "nodejsscan", "name": "Nodejsscan", "file": "nodejsscan.sarif", "parser": parse_sarif},
     {"id": "gitleaks", "name": "Gitleaks", "file": "gitleaks.sarif", "parser": parse_sarif},
-    {"id": "gosec", "name": "Gosec", "file": "gosec.sarif", "parser": parse_sarif},
+    {"id": "gosec", "name": "Gosec", "file": "gosec.json", "parser": lambda f: parse_json(f, "gosec")},
     {"id": "hadolint", "name": "Hadolint", "file": "hadolint.sarif", "parser": parse_sarif},
     {"id": "trivy", "name": "Trivy", "file": "trivy.json", "parser": lambda f: parse_json(f, "trivy")},
 ]
@@ -157,72 +168,81 @@ severity_map = {
     "info": 4
 }
 
-def main():
-    all_scanners = []
-    all_findings_list = [] 
-    
-    summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
-
-    for s in SCANNERS_CONFIG:
-        path = os.path.join(REPORT_DIR, s['file'])
-        if not os.path.exists(path):
-            findings = []
-            print(f"⚠️  File not found for {s['name']}: {path}")
-        else:
-            findings = s['parser'](path)
-        for f in findings:
-            raw_sev = str(f.get('severity', 'info')).lower().strip()
-
-        findings.sort(key=lambda x: (severity_map.get(x['severity'].lower(), 99), x.get('title', '')))
-        
-        for f in findings:
-            raw_sev = str(f.get('severity', 'info')).lower().strip()
-            
-            if raw_sev in ["error", "critical", "fatal"]:
-                clean_sev = "critical"
-            elif raw_sev in ["high", "error"]: 
-                clean_sev = "high"
-            elif raw_sev in ["medium", "warn", "warning"]:
-                clean_sev = "medium"
-            elif raw_sev in ["low", "note"]:
-                clean_sev = "low"
-            else:
-                clean_sev = "info"
-
-            f['severity'] = clean_sev
-
-            if clean_sev in summary:
-                summary[clean_sev] += 1
-            
-            all_findings_list.append(f)
-
-        all_scanners.append({
-            "id": s["id"],
-            "name": s["name"],
-            "findings": findings
-        })
-
-    high_risk_count = summary.get("critical", 0) + summary.get("high", 0)
-    medium_count = summary.get("medium", 0)
-
-    if high_risk_count > 0 or medium_count > 5:
-        print(f"QUALITY_GATE_STATUS=FAILED (High: {high_risk_count}, Medium: {medium_count})")
-    else:
-        print("QUALITY_GATE_STATUS=PASSED")
-
+def render_html(all_scanners, summary, all_findings_list):
+    """Function to generate the final HTML file"""
     with open(HTML_OUT, "w", encoding="utf-8") as f:
         f.write(Template(TEMPLATE).render(
             scanners=all_scanners, 
             total=len(all_findings_list),
             summary=summary
         ))
-
     print(f"✅ Report generated: {HTML_OUT} (Total issues: {len(all_findings_list)})")
-    
-    if high_risk_count > 0:
-        print(f"QUALITY_GATE_STATUS=FAILED (High risk: {high_risk_count})")
+
+def main():
+    all_scanners = []
+    all_findings_list = [] 
+    summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+
+    selected_env = os.getenv("TOOL", os.getenv("TOOLS", "all"))
+    if selected_env == "all":
+        selected_tools = [s['id'] for s in SCANNERS_CONFIG]
+    else:
+        selected_tools = [t.strip() for t in selected_env.split(',')]
+
+    for s in SCANNERS_CONFIG:
+        if s['id'] not in selected_tools:
+            continue
+
+        path = os.path.join(REPORT_DIR, s['file'])
+        if not os.path.exists(path):
+            print(f"⚠️  Report file for {s['name']} not found at {path}")
+            continue
+        
+        findings = s['parser'](path)
+        
+        findings.sort(key=lambda x: (severity_map.get(x['severity'].lower(), 99), x.get('title', '')))
+
+        processed_findings = []
+        for f in findings:
+            raw_sev = str(f.get('severity', 'info')).lower().strip()
+            
+            if raw_sev in ["error", "critical", "fatal"]: clean_sev = "critical"
+            elif raw_sev in ["high"]: clean_sev = "high"
+            elif raw_sev in ["medium", "warn", "warning"]: clean_sev = "medium"
+            elif raw_sev in ["low", "note"]: clean_sev = "low"
+            else: clean_sev = "info"
+
+            f['severity'] = clean_sev
+            summary[clean_sev] += 1
+            all_findings_list.append(f)
+            processed_findings.append(f)
+
+        all_scanners.append({
+            "id": s["id"],
+            "name": s["name"],
+            "findings": processed_findings
+        })
+
+# --- QUALITY GATE (console output for entrypoint.sh) ---
+    high_risk = summary.get("critical", 0) + summary.get("high", 0)
+    medium_risk = summary.get("medium", 0)
+
+    if high_risk > 0 or medium_risk > 5:
+        print(f"QUALITY_GATE_STATUS=FAILED (High: {high_risk}, Medium: {medium_risk})")
     else:
         print("QUALITY_GATE_STATUS=PASSED")
+
+# --- WRITE TO FILE (use your TEMPLATE below) ---
+    try:
+        with open(HTML_OUT, "w", encoding="utf-8") as f:
+            f.write(Template(TEMPLATE).render(
+                scanners=all_scanners, 
+                total=len(all_findings_list),
+                summary=summary
+            ))
+        print(f"✅ Report generated: {HTML_OUT} (Total issues: {len(all_findings_list)})")
+    except Exception as e:
+        print(f"❌ Error generating HTML report: {e}")
 
 # ==================== TEMPLATE (CSS/JS) ====================
 TEMPLATE = """

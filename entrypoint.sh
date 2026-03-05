@@ -56,13 +56,35 @@ fi
 
 if should_run "gitleaks"; then
     echo "→ Running Gitleaks"
-    gitleaks detect --source "$SCAN_DIR" --no-git --report-format json --report-path "$REPORT_DIR/gitleaks.json" || true
+    gitleaks detect --source "$SCAN_DIR" --no-git --report-format sarif --report-path "$REPORT_DIR/gitleaks.sarif" || true
 fi
 
 if should_run "gosec"; then
-    echo "→ Running Gosec (SARIF mode)"
-    cd "$SCAN_DIR" && gosec -fmt sarif -out "$REPORT_DIR/gosec.sarif" ./... || true
-    cd /scanner
+    echo "→ Running Gosec"
+    WORK_DIR="/tmp/gosec_sandbox"
+    rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
+    
+    cp -a "$SCAN_DIR"/. "$WORK_DIR/" 2>/dev/null
+    cd "$WORK_DIR" || exit 1
+
+    if [ ! -f "go.mod" ]; then
+        go mod init scan/target >/dev/null 2>&1
+    fi
+    
+    go mod tidy >/dev/null 2>&1
+
+    echo "Analyzing files..."
+    
+    gosec -fmt json -out "$REPORT_DIR/gosec.json" -no-fail ./... > /dev/null 2>&1
+
+    if [ -s "$REPORT_DIR/gosec.json" ]; then
+        V_COUNT=$(jq '.Issues | length' "$REPORT_DIR/gosec.json" 2>/dev/null || echo "0")
+        echo "✅ Gosec finished. Found $V_COUNT issues."
+    else
+        echo "❌ Gosec failed to produce report."
+        echo '{"Issues": []}' > "$REPORT_DIR/gosec.json"
+    fi
+    cd - > /dev/null
 fi
 
 if should_run "hadolint"; then
@@ -78,12 +100,10 @@ fi
 
 if should_run "trivy"; then
     echo "→ Running Trivy"
-    trivy fs --format sarif --output "$REPORT_DIR/trivy.sarif" --scanners vuln,secret,misconfig "$SCAN_DIR" || true
-    trivy fs --format json --output "$REPORT_DIR/trivy.json" --scanners vuln,secret,misconfig "$SCAN_DIR" || true
-    trivy fs --format template --template "@/scanner/templates/trivy-html.tpl" --output "$REPORT_DIR/trivy.html" --scanners vuln,secret,misconfig "$SCAN_DIR" || true
+    trivy fs --format json --output "$REPORT_DIR/trivy.json" "$SCAN_DIR" || truefi
 fi
 
-# Integration with DefectDojo
+# ---Integration with DefectDojo---
 if [ -n "${DOJO_URL:-}" ] && [ -n "${DOJO_TOKEN:-}" ]; then
     echo "→ DefectDojo integration enabled."
 else
@@ -120,7 +140,7 @@ if [ -n "${DOJO_URL:-}" ] && [ -n "${DOJO_TOKEN:-}" ]; then
             echo " ✅ $scan_type uploaded (Test ID: $tid)"
 
             if [ "$HTML_ALREADY_UPLOADED" -eq 0 ]; then
-                if [[ "$scan_type" == "SARIF" || "$scan_type" == "Semgrep OSS Scan" ]]; then
+                if [[ "$scan_type" == "SARIF" || "$scan_type" == "Semgrep OSS Scan" || "$scan_type" == "Gosec Scanner" || "$scan_type" == "Trivy Scan" ]]; then
                     if [ -f "/scanner/reports/full_report.html" ]; then
                         echo " 📎 Attaching HTML report to Test ID: $tid..."
 
@@ -147,17 +167,14 @@ if [ -n "${DOJO_URL:-}" ] && [ -n "${DOJO_TOKEN:-}" ]; then
         fi
         rm -f "$resp_file"
     }
-
-    upload_to_dojo "/scanner/reports/semgrep.sarif" "SARIF"
-    upload_to_dojo "/scanner/reports/trivy.json" "Trivy Scan"
-    upload_to_dojo "/scanner/reports/bandit.json" "Bandit Scan"
-    upload_to_dojo "/scanner/reports/gitleaks.sarif" "SARIF"
-    upload_to_dojo "/scanner/reports/nodejsscan.sarif" "SARIF"
-    upload_to_dojo "/scanner/reports/gosec.sarif" "SARIF"
-    upload_to_dojo "/scanner/reports/hadolint.sarif" "SARIF"
-
-    echo "⌛ Waiting for Dojo to finalize (3s)..."
-    sleep 3
+    
+    if should_run "semgrep";    then upload_to_dojo "/scanner/reports/semgrep.sarif" "SARIF"; fi
+    if should_run "trivy";      then upload_to_dojo "/scanner/reports/trivy.json" "Trivy Scan"; fi
+    if should_run "bandit";     then upload_to_dojo "/scanner/reports/bandit.json" "Bandit Scan"; fi
+    if should_run "gitleaks";   then upload_to_dojo "/scanner/reports/gitleaks.sarif" "SARIF"; fi
+    if should_run "nodejsscan"; then upload_to_dojo "/scanner/reports/nodejsscan.sarif" "SARIF"; fi
+    if should_run "gosec";      then upload_to_dojo "/scanner/reports/gosec.json" "Gosec Scanner"; fi
+    if should_run "hadolint";   then upload_to_dojo "/scanner/reports/hadolint.sarif" "SARIF"; fi
 fi
 
 # --- Final analize Quality Gate ---

@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       scanner:
-        description: 'Сканер для запуска (semgrep, bandit, nodejsscan, gitleaks, gosec, hadolint, trivy, all)'
+        description: 'Scanner to start (semgrep, bandit, nodejsscan, gitleaks, gosec, hadolint, trivy, all)'
         required: true
         default: 'all'
       repo_url:
-        description: 'Репозиторий для сканирования (self для текущего, или полный URL внешнего repo)'
+        description: 'Repository for scanning (self for current, or full URL of external repo)'
         required: true
         default: 'self'
       branch:
-        description: 'Ветка внешнего repo (если repo_url не self)'
+        description: 'Branch of external repo (if repo_url is not self)'
         required: false
         default: 'main'
       mode:
-        description: 'Режим сканирования (full или incremental)'
+        description: 'Scanning mode (full or incremental)'
         required: false
         default: 'full'
 

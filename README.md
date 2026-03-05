@@ -96,7 +96,7 @@ __Option 1 — Use DefectDojo__
 
 If you upload results to *__DefectDojo__*, mounting the reports folder is __not required__.
 
-The container will still generate reports internally and upload them automatically.
+The container will still generate reports internally and upload them automatically. (*if you add reqaered information*)
 
 __Option 2 — Local Reports__
 
