@@ -24,6 +24,8 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
       SCANNER: ${{ inputs.scanner }}
       REPO_URL: ${{ inputs.repo_url }}
       BRANCH: ${{ inputs.branch }}
@@ -33,7 +35,7 @@ jobs:
       actions: write
 
     steps:
-      - name: Checkout current repo (for self-scan or tools)
+      - name: Checkout current repo
         uses: actions/checkout@v4
 
       - name: Clone external repo if needed
@@ -52,24 +54,30 @@ jobs:
             echo "SCAN_CODE_DIR=external-repo" >> $GITHUB_ENV
           fi
 
-      - name: Prepare reports directory with correct permissions
+      - name: Prepare reports directory
         run: |
           mkdir -p reports
           sudo chown -R 10001:10001 reports
           sudo chmod -R 777 reports 
 
-      - name: Build Docker image
-        run: docker build -t security-scanner .
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run scanner
         run: |
+          IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" | tr '[:upper:]' '[:lower:]')
+          
           docker run --rm \
             -v "${PWD}/$SCAN_CODE_DIR:/scan-target:ro" \
             -v "${PWD}/reports:/scanner/reports" \
             -e SCAN_DIR=/scan-target \
             -e TOOL="$SCANNER" \
             -e SCAN_MODE="$SCAN_MODE" \
-            security-scanner
+            $IMAGE_PATH
 
       - name: Upload reports as artifact
         if: always()
