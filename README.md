@@ -369,16 +369,26 @@ For example:
 ## 📸 Screenshots
 ### Container Execution
 
-(WIP)
+![Container Run](/docs/images/Docker_execute.png)
 
 Example:
 ```docker
-docker run ...
+docker run --rm \
+-v "${PWD}/{YUR_TARGET}:/scan-target:ro" \
+-e SCAN_DIR=/scan-target \
+-e DOJO_URL={URL} \
+-e DOJO_TOKEN={TOKEN} \
+-e ENGAGEMENT_ID={ID} \
+{DOCKER_NAME}
 ```
 ### Generated HTML Report
 
-(WIP)
+![Full Report Info](/docs/images/Full_HTML_report.png)
 
 ### DefectDojo Report Upload
-
-(WIP)
+Reports into Dojo
+![Full Report Info](/docs/images/All_reports_into_Dojo.png)
+Vulnerability into Dojo
+![Vulnerability into Dojo](/docs/images/Vulnerability_into_Dojo.png)
+Full `HTML` reports attahed like file You can see where the file was attached in [the consol output](#container-execution)
+![Consolidated report into Dojo](/docs/images/Consolidated_report_into_Dojo.png)
